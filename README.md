@@ -5,6 +5,7 @@ A Python script that exports an entire git repository into a single, well-organi
 ## Features
 
 - **Git-aware**: Only includes tracked files, automatically respecting `.gitignore`
+- **Customizable filtering**: Use `.repotomdrc` to exclude or include specific files
 - **Visual directory tree**: Shows folder structure with intuitive icons
 - **Table of contents**: Clickable links with line ranges for quick navigation
 - **Syntax highlighting**: Code blocks use appropriate language tags based on file extensions
@@ -15,11 +16,11 @@ A Python script that exports an entire git repository into a single, well-organi
 
 ```bash
 # Clone the repository
-git clone https://github.com/MathiasMahn/GitRepo2Markdown-Exporter.git
-cd GitRepo2Markdown-Exporter
+git clone https://github.com/yourusername/repo-to-markdown.git
+cd repo-to-markdown
 
 # Make the script executable (optional)
-chmod +x repo2markdown.py
+chmod +x repo_to_markdown.py
 ```
 
 **Requirements:**
@@ -29,7 +30,7 @@ chmod +x repo2markdown.py
 ## Usage
 
 ```bash
-python repo2markdown.py [repo_path] [output_file]
+python repo_to_markdown.py [repo_path] [output_file]
 ```
 
 | Argument | Default | Description |
@@ -41,14 +42,77 @@ python repo2markdown.py [repo_path] [output_file]
 
 ```bash
 # Export current directory
-python repo2markdown.py
+python repo_to_markdown.py
 
 # Export a specific repository
-python repo2markdown.py /path/to/my-project
+python repo_to_markdown.py /path/to/my-project
 
 # Export with custom output filename
-python repo2markdown.py ./my-project project-snapshot.md
+python repo_to_markdown.py ./my-project project-snapshot.md
 ```
+
+## Configuration
+
+Create a `.repotomdrc` file in your repository root to customize which files are included in the output.
+
+### File Format
+
+```ini
+[exclude]
+# Patterns for files to exclude (in addition to .gitignore)
+# These files won't appear in the markdown output
+
+[include]
+# Patterns for files to include (overrides .gitignore)
+# Use this to add gitignored files to the output
+```
+
+### Pattern Syntax
+
+Patterns follow gitignore-style matching:
+
+| Pattern | Matches |
+|---------|---------|
+| `*.log` | All `.log` files in any directory |
+| `docs/*` | All files directly in the `docs/` folder |
+| `docs/**` | All files anywhere under `docs/` |
+| `test_*.py` | Files starting with `test_` ending in `.py` |
+| `config/?.json` | Single character matches like `config/a.json` |
+| `[abc].txt` | Matches `a.txt`, `b.txt`, or `c.txt` |
+
+### Example Configuration
+
+```ini
+[exclude]
+# Don't include test files in documentation
+tests/*
+*_test.py
+*.spec.js
+
+# Exclude build artifacts that might be tracked
+dist/*
+build/*
+
+# Exclude sensitive configs
+.env
+secrets.json
+config/local.yaml
+
+[include]
+# Include example env file even though .env* is gitignored
+.env.example
+
+# Include sample configs
+*.sample
+config/*.example.yaml
+```
+
+### Behavior Notes
+
+- The `.repotomdrc` file itself is automatically excluded from output
+- `[include]` patterns can pull in gitignored files
+- `[exclude]` patterns only affect git-tracked files
+- Patterns are applied in order: tracked files → minus excludes → plus includes
 
 ## Output Format
 

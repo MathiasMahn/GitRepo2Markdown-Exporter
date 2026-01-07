@@ -11,13 +11,143 @@ Usage:
     
     repo_path   - Path to the git repository (default: current directory)
     output_file - Output markdown file (default: repo_contents.md)
+
+Configuration (.repotomdrc):
+    Create a .repotomdrc file in the repository root to customize file inclusion.
+    The file uses gitignore-style patterns with two sections:
+    
+    [exclude]
+    # Files to exclude (in addition to .gitignore)
+    *.test.js
+    docs/internal/*
+    secrets.json
+    
+    [include]
+    # Files to include (overrides .gitignore exclusions)
+    .env.example
+    config/*.sample
+    
+    Patterns support:
+    - * matches any characters except /
+    - ** matches any characters including /
+    - ? matches single character
+    - [seq] matches any character in seq
 """
 
 import os
 import sys
 import subprocess
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import Generator
+
+CONFIG_FILENAME = ".repotomdrc"
+
+
+def parse_config(repo_path: str) -> tuple[list[str], list[str]]:
+    """
+    Parse the .repotomdrc config file.
+    Returns (exclude_patterns, include_patterns).
+    """
+    config_path = os.path.join(repo_path, CONFIG_FILENAME)
+    exclude_patterns = []
+    include_patterns = []
+    
+    if not os.path.isfile(config_path):
+        return exclude_patterns, include_patterns
+    
+    current_section = None
+    
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                
+                # Skip empty lines and comments
+                if not line or line.startswith('#'):
+                    continue
+                
+                # Check for section headers
+                if line.lower() == '[exclude]':
+                    current_section = 'exclude'
+                    continue
+                elif line.lower() == '[include]':
+                    current_section = 'include'
+                    continue
+                
+                # Add pattern to appropriate list
+                if current_section == 'exclude':
+                    exclude_patterns.append(line)
+                elif current_section == 'include':
+                    include_patterns.append(line)
+    except (IOError, OSError) as e:
+        print(f"Warning: Could not read {CONFIG_FILENAME}: {e}")
+    
+    return exclude_patterns, include_patterns
+
+
+def matches_pattern(filepath: str, pattern: str) -> bool:
+    """
+    Check if a filepath matches a gitignore-style pattern.
+    Supports *, **, ?, and [seq] wildcards.
+    """
+    # Normalize path separators
+    filepath = filepath.replace('\\', '/')
+    pattern = pattern.replace('\\', '/')
+    
+    # Handle ** (matches any path segments)
+    if '**' in pattern:
+        # Convert ** to regex-like matching
+        # Split pattern by ** and match segments
+        parts = pattern.split('**')
+        if len(parts) == 2:
+            prefix, suffix = parts
+            prefix = prefix.rstrip('/')
+            suffix = suffix.lstrip('/')
+            
+            # Check if filepath could match
+            if prefix and not filepath.startswith(prefix.rstrip('*')):
+                if not fnmatch(filepath.split('/')[0], prefix.rstrip('/')):
+                    return False
+            
+            if suffix:
+                # Check all possible suffixes
+                path_parts = filepath.split('/')
+                for i in range(len(path_parts)):
+                    remaining = '/'.join(path_parts[i:])
+                    if fnmatch(remaining, suffix) or fnmatch(remaining, suffix.lstrip('/')):
+                        return True
+                return False
+            else:
+                # Pattern ends with **, matches anything under prefix
+                return filepath.startswith(prefix.rstrip('*')) or fnmatch(filepath, prefix + '*')
+    
+    # Handle directory patterns (ending with /)
+    if pattern.endswith('/'):
+        pattern = pattern.rstrip('/') + '/*'
+    
+    # Direct fnmatch
+    if fnmatch(filepath, pattern):
+        return True
+    
+    # Also try matching just the filename
+    filename = os.path.basename(filepath)
+    if fnmatch(filename, pattern):
+        return True
+    
+    # Try matching from any directory level
+    path_parts = filepath.split('/')
+    for i in range(len(path_parts)):
+        partial_path = '/'.join(path_parts[i:])
+        if fnmatch(partial_path, pattern):
+            return True
+    
+    return False
+
+
+def matches_any_pattern(filepath: str, patterns: list[str]) -> bool:
+    """Check if filepath matches any of the given patterns."""
+    return any(matches_pattern(filepath, pattern) for pattern in patterns)
 
 
 def get_tracked_files(repo_path: str) -> set[str]:
@@ -34,6 +164,73 @@ def get_tracked_files(repo_path: str) -> set[str]:
     except subprocess.CalledProcessError as e:
         print(f"Error: Not a git repository or git command failed: {e}")
         sys.exit(1)
+
+
+def get_all_files(repo_path: str) -> set[str]:
+    """Get all files in the repository (including ignored ones, excluding .git)."""
+    all_files = set()
+    for root, dirs, files in os.walk(repo_path):
+        # Skip .git directory
+        if '.git' in dirs:
+            dirs.remove('.git')
+        
+        for file in files:
+            full_path = os.path.join(root, file)
+            rel_path = os.path.relpath(full_path, repo_path)
+            # Normalize path separators
+            rel_path = rel_path.replace('\\', '/')
+            all_files.add(rel_path)
+    
+    return all_files
+
+
+def get_filtered_files(repo_path: str) -> set[str]:
+    """
+    Get the final set of files to include, applying .repotomdrc rules.
+    
+    Logic:
+    1. Start with git tracked files
+    2. Remove files matching [exclude] patterns
+    3. Add back files matching [include] patterns (even if gitignored)
+    """
+    # Get base set of tracked files
+    tracked_files = get_tracked_files(repo_path)
+    
+    # Parse config
+    exclude_patterns, include_patterns = parse_config(repo_path)
+    
+    # Report config if found
+    if exclude_patterns or include_patterns:
+        print(f"Found {CONFIG_FILENAME}:")
+        if exclude_patterns:
+            print(f"  - {len(exclude_patterns)} exclude pattern(s)")
+        if include_patterns:
+            print(f"  - {len(include_patterns)} include pattern(s)")
+    
+    # Apply exclusions
+    if exclude_patterns:
+        filtered = {f for f in tracked_files if not matches_any_pattern(f, exclude_patterns)}
+        excluded_count = len(tracked_files) - len(filtered)
+        if excluded_count:
+            print(f"  - Excluded {excluded_count} file(s)")
+        tracked_files = filtered
+    
+    # Apply inclusions (can override gitignore)
+    if include_patterns:
+        all_files = get_all_files(repo_path)
+        gitignored_files = all_files - get_tracked_files(repo_path)
+        
+        # Find gitignored files that match include patterns
+        files_to_add = {f for f in gitignored_files if matches_any_pattern(f, include_patterns)}
+        
+        if files_to_add:
+            print(f"  - Including {len(files_to_add)} previously ignored file(s)")
+            tracked_files = tracked_files | files_to_add
+    
+    # Always exclude the config file itself from output
+    tracked_files.discard(CONFIG_FILENAME)
+    
+    return tracked_files
 
 
 def is_binary_file(filepath: str) -> bool:
@@ -102,13 +299,13 @@ def create_markdown(repo_path: str, output_file: str) -> None:
     repo_path = os.path.abspath(repo_path)
     repo_name = os.path.basename(repo_path)
     
-    # Get tracked files
-    tracked_files = get_tracked_files(repo_path)
+    # Get filtered files (respecting .repotomdrc)
+    tracked_files = get_filtered_files(repo_path)
     if not tracked_files:
-        print("No tracked files found in the repository.")
+        print("No files to include in the output.")
         sys.exit(1)
     
-    print(f"Found {len(tracked_files)} tracked files")
+    print(f"Including {len(tracked_files)} file(s) in output")
     
     # Build directory tree
     tree = build_directory_tree(tracked_files)
