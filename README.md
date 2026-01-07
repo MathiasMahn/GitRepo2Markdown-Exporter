@@ -16,11 +16,11 @@ A Python script that exports an entire git repository into a single, well-organi
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/repo-to-markdown.git
-cd repo-to-markdown
+git clone https://github.com/MathiasMahn/GitRepo2Markdown-Exporter.git
+cd GitRepo2Markdown-Exporter
 
 # Make the script executable (optional)
-chmod +x repo_to_markdown.py
+chmod +x repo2markdown.py
 ```
 
 **Requirements:**
@@ -30,7 +30,7 @@ chmod +x repo_to_markdown.py
 ## Usage
 
 ```bash
-python repo_to_markdown.py [repo_path] [output_file]
+python repo2markdown.py [repo_path] [output_file]
 ```
 
 | Argument | Default | Description |
@@ -42,13 +42,13 @@ python repo_to_markdown.py [repo_path] [output_file]
 
 ```bash
 # Export current directory
-python repo_to_markdown.py
+python repo2markdown.py
 
 # Export a specific repository
-python repo_to_markdown.py /path/to/my-project
+python repo2markdown.py /path/to/my-project
 
 # Export with custom output filename
-python repo_to_markdown.py ./my-project project-snapshot.md
+python repo2markdown.py ./my-project project-snapshot.md
 ```
 
 ## Configuration
