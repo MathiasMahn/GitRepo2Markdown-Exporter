@@ -161,8 +161,7 @@ def create_markdown(repo_path: str, output_file: str) -> None:
         len(header_lines) + 
         len(structure_lines) + 
         len(toc_header) + 
-        num_toc_entries +  # TOC entries
-        3  # Empty line, separator, empty line after TOC
+        num_toc_entries  # TOC entries
     )
     
     # File contents section header
@@ -200,17 +199,19 @@ def create_markdown(repo_path: str, output_file: str) -> None:
         # Line 4: (empty)
         # Line 5: ```ext
         # Lines 6 to 6+content_lines-1: content
-        # Line 6+content_lines: ```
-        # Line 7+content_lines: (empty)
-        # Line 8+content_lines: ---
-        # Line 9+content_lines: (empty)
+        # Next line: ```
+        # Next line: (empty)
+        # Next line: ---
+        # Next line: (empty) <-- this belongs to next file's section
         
         start_line = current_line
-        total_file_lines = 4 + 1 + content_lines + 1 + 3  # header(4) + fence_start(1) + content + fence_end(1) + spacing(3)
+        # header(4) + fence_start(1) + content + fence_end(1) + empty(1) + separator(1) = 8 + content_lines
+        total_file_lines = 4 + 1 + content_lines + 1 + 1 + 1
         end_line = current_line + total_file_lines - 1
         
         file_line_ranges[filepath] = (start_line, end_line, file_type)
-        current_line = end_line + 1
+        # Next file starts after the empty line following the separator
+        current_line = end_line + 2  # +1 for the empty line after ---
     
     # Now build the final document
     output_lines = []
